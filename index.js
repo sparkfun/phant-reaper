@@ -9,7 +9,8 @@
 'use strict';
 
 /**** Module dependencies ****/
-var util = require('util');
+var util = require('util'),
+    async = require('async');
 
 /**** app prototype ****/
 var app = Reaper.prototype;
@@ -17,7 +18,7 @@ var app = Reaper.prototype;
 /**** Expose Reaper ****/
 exports = module.exports = Reaper;
 
-function PhantStream(options) {
+function Reaper(options) {
 
   if (! (this instanceof Reaper)) {
     return new Reaper(options);
@@ -27,6 +28,86 @@ function PhantStream(options) {
 
 }
 
-app.age = 7; // days
+app.age = 7 * 24 * 60 * 60 * 1000; // 7 days
 app.metadata = false;
 app.storage = false;
+app.toDelete = [];
+app.offset = 0;
+
+app.reap = function() {
+
+  async.doWhilst(
+    this.load.bind(this),
+    this.check.bind(this),
+    this.delete.bind(this)
+  );
+
+};
+
+app.check = function() {
+
+  return this.offset;
+
+};
+
+app.load = function(callback) {
+
+  var self = this;
+
+  this.metadata.list(function(err, streams) {
+
+    var now = new Date();
+
+    if(err || ! streams.length) {
+      self.offset = 0;
+      return callback('done');
+    }
+
+    streams.forEach(function(stream) {
+
+      var last = new Date(stream.last_push);
+
+      if((now.getTime() - last.getTime()) >= self.age) {
+        self.toDelete.push(stream.id);
+      }
+
+    });
+
+    self.offset += 100;
+    callback();
+
+  }, self.offset, 100);
+
+};
+
+app.delete = function(err) {
+
+  var self = this;
+
+  async.each(this.toDelete, function(id, callback) {
+
+    self.metadata.remove(id, function(err) {
+
+      if(err) {
+        return callback(err);
+      }
+
+      self.storage.clear(id);
+      callback();
+
+    });
+
+  }, function(err) {
+
+    if (err) {
+      console.log(err);
+    } else {
+      console.log('Deleted ' + self.toDelete.length + ' unused streams');
+    }
+
+    self.offset = 0;
+    self.toDelete = [];
+
+  });
+
+};
