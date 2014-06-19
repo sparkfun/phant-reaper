@@ -34,12 +34,12 @@ app.storage = false;
 app.toDelete = [];
 app.offset = 0;
 
-app.reap = function() {
+app.reap = function(cb) {
 
   async.doWhilst(
     this.load.bind(this),
     this.check.bind(this),
-    this.delete.bind(this)
+    this.delete.bind(this, cb)
   );
 
 };
@@ -80,7 +80,7 @@ app.load = function(callback) {
 
 };
 
-app.delete = function(err) {
+app.delete = function(callback, err) {
 
   var self = this;
 
@@ -107,6 +107,8 @@ app.delete = function(err) {
 
     self.offset = 0;
     self.toDelete = [];
+
+    callback();
 
   });
 
