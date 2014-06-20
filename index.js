@@ -54,7 +54,7 @@ app.load = function(callback) {
 
   var self = this;
 
-  this.metadata.list(function(err, streams) {
+  this.metadata.all(function(err, streams) {
 
     var now = new Date();
 
@@ -65,11 +65,21 @@ app.load = function(callback) {
 
     streams.forEach(function(stream) {
 
-      var last = new Date(stream.last_push);
+      var last = new Date(stream.last_push),
+          created = new Date(stream.date);
 
-      if((now.getTime() - last.getTime()) >= self.age) {
-        self.toDelete.push(stream.id);
+      // leave it alone if it was created recently
+      if ((now.getTime() - created.getTime()) < self.age) {
+        return;
       }
+
+      // leave it alone if it has pushed recently
+      if ((now.getTime() - last.getTime()) < self.age) {
+        return;
+      }
+
+      // stale. delete it
+      self.toDelete.push(stream.id);
 
     });
 
