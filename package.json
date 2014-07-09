@@ -29,8 +29,5 @@
   },
   "scripts": {
     "test": "grunt"
-  },
-  "dependencies": {
-    "async": "^0.9.0"
   }
 }

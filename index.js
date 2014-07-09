@@ -10,7 +10,10 @@
 
 /**** Module dependencies ****/
 var util = require('util'),
-    async = require('async');
+    events = require('events');
+
+/**** Make Reaper an event emitter ****/
+util.inherits(Reaper, events.EventEmitter);
 
 /**** app prototype ****/
 var app = Reaper.prototype;
@@ -24,102 +27,54 @@ function Reaper(options) {
     return new Reaper(options);
   }
 
+  events.EventEmitter.call(this);
+
   util._extend(this, options || {});
 
 }
 
-app.age = 7 * 24 * 60 * 60 * 1000; // 7 days
+app.created = 7 * 24 * 60 * 60 * 1000; // 7 days
+app.pushed = 31540000000; // 1 year
 app.metadata = false;
 app.storage = false;
-app.toDelete = [];
-app.offset = 0;
 
-app.reap = function(cb) {
+app.reap = function() {
 
-  async.doWhilst(
-    this.load.bind(this),
-    this.check.bind(this),
-    this.delete.bind(this, cb)
-  );
+  var self = this,
+      now = new Date();
 
-};
+  this.metadata.each(function(err, stream) {
 
-app.check = function() {
+    var last = new Date(stream.last_push),
+        created = new Date(stream.date);
 
-  return this.offset;
-
-};
-
-app.load = function(callback) {
-
-  var self = this;
-
-  this.metadata.all(function(err, streams) {
-
-    var now = new Date();
-
-    if(err || ! streams.length) {
-      self.offset = 0;
-      return callback('done');
+    if(err) {
+      return self.emit('error', err);
     }
 
-    streams.forEach(function(stream) {
+    // leave it alone if it was created recently
+    if ((now.getTime() - created.getTime()) < self.created) {
+      return;
+    }
 
-      var last = new Date(stream.last_push),
-          created = new Date(stream.date);
+    // leave it alone if it has pushed recently
+    if ((now.getTime() - last.getTime()) < self.pushed) {
+      return;
+    }
 
-      // leave it alone if it was created recently
-      if ((now.getTime() - created.getTime()) < self.age) {
-        return;
-      }
-
-      // leave it alone if it has pushed recently
-      if ((now.getTime() - last.getTime()) < self.age) {
-        return;
-      }
-
-      // stale. delete it
-      self.toDelete.push(stream.id);
-
-    });
-
-    self.offset += 100;
-    callback();
-
-  }, self.offset, 100);
-
-};
-
-app.delete = function(callback, err) {
-
-  var self = this;
-
-  async.each(this.toDelete, function(id, callback) {
-
-    self.metadata.remove(id, function(err) {
+    self.metadata.delete(stream.id, function(err) {
 
       if(err) {
-        return callback(err);
+        return self.emit('error', err);
       }
 
-      self.storage.clear(id);
-      callback();
+      self.storage.clear(stream.id);
+
+      self.emit('delete', stream.id);
 
     });
-
-  }, function(err) {
-
-    if (err) {
-      console.log(err);
-    } else {
-      console.log('Deleted ' + self.toDelete.length + ' unused streams');
-    }
-
-    self.offset = 0;
-    self.toDelete = [];
-
-    callback();
 
   });
 
 };
+
